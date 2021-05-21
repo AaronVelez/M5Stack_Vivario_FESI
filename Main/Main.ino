@@ -97,7 +97,7 @@ DFRobot_BMP388_I2C bmp388;
 
 
 ////// Library for CCS811 Air Quality Sensor
-"DFRobot_CCS811.h"
+#include "DFRobot_CCS811.h"
 DFRobot_CCS811 CCS811;
 
 
@@ -147,8 +147,8 @@ int yrIoT = -1;
 
 
 ////// State machine Shift Registers
-int LastSec = -1;           // Last second that gas sensor values where measured
-int LastSum = -1;			// Last minute that variables were added to the sum for later averaging
+int LastSec = -1;           // Last second that the screen was updated
+int LastSum = -1;			// Last minute that variables were measured added to the sum for later averaging
 int SumNum = 0;				// Number of times a variable value has beed added to the sum for later averaging
 int LastLog = -1;			// Last minute that variables were loged to the SD card
 bool PayloadRdy = false;	// Payload ready to send to LoRa
@@ -158,27 +158,27 @@ const int DataBucket_frq = 150;       // Data bucket update frequency in seconds
 
 
 ////// Measured instantaneous variables
-float Temp = -1;        // Air temperature read each minute
-float RH = -1;          // Air RH value read each minute
-float Pressure = -1;    // Barometric presure measured each minute
-float CO2ppm = -1;      // eCO2 value read each minute
-float TVOC = -1;        // Total Volatile Organic Compounds (TVOC) value measured each minute
+float Temp = -1;        // Air temperature 
+float RH = -1;          // Air RH value 
+float Pressure = -1;    // Barometric presure 
+int CO2ppm = -1;      // eCO2 value 
+int TVOC = -1;        // Total Volatile Organic Compounds (TVOC) value 
 
 
 ////// Variables to store sum for eventual averaging
 float TempSum = 0;
 float RHSum = 0;
 float PressureSum = 0;
-float CO2ppmSum = 0;
-float TVOCSum = 0;
+int CO2ppmSum = 0;
+int TVOCSum = 0;
 
 
 ////// Values to be logged. They will be the average over the last 5 minutes
 float TempAvg = 0;
 float RHAvg = 0;
 float PressureAvg = 0;
-float CO2ppmAvg = 0;
-float TVOCAvg = 0;
+int CO2ppmAvg = 0;
+int TVOCAvg = 0;
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -293,6 +293,7 @@ void setup() {
         M5.Lcd.println(F("Failed to initialize the chip, please confirm the wire connection"));
         delay(1000);
     }
+    //CCS811.setMeasurementMode(eCycle_1s, 0, 0); // constant power mode, read evry second is possible
 
 
     M5.Lcd.println(F("Setup done!"));
@@ -343,113 +344,56 @@ void loop() {
 
 
 
-
-    ////// State 4. Test if it is time to read gas sensor values (each second)
-    if (s != LastSec) { // logical test still need to be added
-        O2Value = Oxygen.ReadOxygenData(COLLECT_NUMBER); //DFRobot_OxygenSensor Oxygen code
-        sum = 0;
-        for (int i = 0; i < n; i++) {
-            sum += analogReadMilliVolts(CO2In);
-        }
-        CO2mVolt = sum / n;
-        if (CO2mVolt < 400) { // Sensor in preheting if voltage is lower than 400 mV
-            CO2ppm = 0;   // Set value to cero to identify faulty datapoints
-        }
-        else {
-            CO2ppm = (CO2mVolt - 400) * CO2cal;
-        }
-        if (debug) {
-            M5.Lcd.println((String)"Oxygene: " + O2Value + " %vol");
-            M5.Lcd.println((String)"CO2: " + CO2ppm + " ppm");
-        }
-        LastSec = s;
-    }
-
-
-    ////// State 5. Test gas limits
-    // Always test
-    if (true) {
-        if (O2Value < 19) { O2low = true; }
-        else { O2low = false; }
-        // High oxygene
-        if (O2Value > 23) { O2high = true; }
-        else { O2high = false; }
-        // High carbon dioxide
-        if (CO2ppm > 2000) { CO2high = true; }
-        else { CO2high = false; }
-    }
-
-
-    ////// State 6 trigger alarm
-    if (O2low || O2high || CO2high) {
-        for (int i = 0; i <= 20; i++) {
-            BeepStr = millis();
-            int j = 0;
-            while (millis() - BeepStr < BeepLgth) {
-                if (j == 0) {
-                    M5.Speaker.tone(Note, BeepLgth);
-                    M5.update();
-                }
-                j += 1;
-                thing.handle();     // Keep IoT engine running
-            }
-            while (millis() - BeepStr < (BeepLgth * 2)) {
-                M5.Speaker.mute();
-                thing.handle();     // Keep IoT engine running
-            }
-        }
-        // Alert email (via iot thinger endpoint)
-        if (O2low || O2high) {
-            if ((unix_t - t_email) > (email_frq * 60)) {  // prevent sending too many email with the same message
-                pson EmailData;
-                EmailData["oxygen"] = O2Value;
-                EmailData["year"] = yr;
-                EmailData["month"] = mo;
-                EmailData["day"] = dy;
-                EmailData["hour"] = h;
-                EmailData["minute"] = m;
-                EmailData["second"] = s;
-                if (O2low) {
-                    thing.call_endpoint("Low_oxygen_PhotoLab_email", EmailData);
-                }
-                if (O2high) {
-                    thing.call_endpoint("High_oxygen_PhotoLab_email", EmailData);
-                }
-                t_email = unix_t;
-            }
-        }
-    }
-
-
-    ////// State 7. Test if it is time to read Temp and RH values
-    ////// AND record sensor values for 5-minute averages (each minute)
-    if (m != LastSum) {
+    ////// State 4. Test if it is time to read sensor values (each 10 seconds)
+    if ( (s % 10 == 0) && (s != LastSum) ) {
+        // SHT31 Temp and RH
         Temp = sht3x.getTemperatureC();
         RH = sht3x.getHumidityRH();
         if (debug) {
             M5.Lcd.println((String)"Temp: " + Temp + " °C");
             M5.Lcd.println((String)"RH: " + RH + " %");
         }
-        // Add new values to sum
-        O2ValueSum += O2Value;
-        CO2ppmSum += CO2ppm;
+        // BMP388 Barometric pressure
+        Pressure = bmp388.readPressure() / 1000;    // in kPa
+        if (debug) { M5.Lcd.println((String)"Pressure: " + Pressure + " kPa"); }
+        // CCS811 Air Quality
+        if (CCS811.checkDataReady() == true) {
+            CO2ppm = CCS811.getCO2PPM();
+            TVOC = CCS811.getTVOCPPB();
+        }
+        else {              // Set values to cero to identify sensor fail
+            CO2ppm = 0;
+            TVOC = 0;
+        }
+        // Set SFT31 measured Temp and RH to compensate future CCS811 readings
+        CCS811.setInTempHum(Temp, RH);
+        if (debug) {
+            M5.Lcd.println((String)"eCO2: " + CO2ppm + " ppm");
+            M5.Lcd.println((String)"TVOC: " + TVOC + " ppb");
+        }
+
+        // Add new values to sum        
         TempSum += Temp;
         RHSum += RH;
+        PressureSum += Pressure;
+        CO2ppmSum += CO2ppm;
+        TVOCSum += TVOC;
 
         // Update Shift registers
-        LastSum = m;
+        LastSum = s;
         SumNum += 1;
     }
 
 
-    ////// State 8. Test if it is time to compute  averages and record in SD card (each 5 minutes)
+    ////// State 5. Test if it is time to compute  averages and record in SD card (each 5 minutes)
     if (((m % 5) == 0) && (m != LastLog)) {
         // Calculate averages
-        O2ValueAvg = O2ValueSum / SumNum;
-        CO2ppmAvg = CO2ppmSum / SumNum;
         TempAvg = TempSum / SumNum;
         RHAvg = RHSum / SumNum;
-
+        PressureAvg = PressureSum / SumNum;
+        CO2ppmAvg = round( CO2ppmSum / SumNum );
+        TVOCAvg = round( TVOCSum / SumNum );
+        
 
         // Open Year LogFile (create if not available)
         if (!sd.exists(FileName[yr - 2020])) {
@@ -482,9 +426,9 @@ void loop() {
 
         // Log to SD card
         LogString = (String)unix_t + "\t" + yr + "\t" + mo + "\t" + dy + "\t" + h + "\t" + m + "\t" + s + "\t" +
-            String(O2ValueAvg, 4) + "\t" + String(CO2ppmAvg, 4) + "\t" +
             String(TempAvg, 4) + "\t" + String(RHAvg, 4) + "\t" +
-            String(CO2cal, 4) + "\t" +
+            String(Pressure, 4) + "\t" +
+            String(CO2ppmAvg) + "\t" + String(TVOCAvg) "\t" +
             "0";
         LogFile.println(LogString); // Prints Log string to SD card file "LogFile.txt"
         LogFile.close(); // Close SD card file to save changes
@@ -493,16 +437,17 @@ void loop() {
         // Reset Shift Registers
         LastLog = m;
 
-        O2ValueSum = 0;
-        CO2ppmSum = 0;
         TempSum = 0;
         RHSum = 0;
+        PressureSum = 0;
+        CO2ppmSum = 0;
+        TVOCSum = 0;
 
         SumNum = 0;
     }
 
 
-    ////// State 9. Test if there is data available to be sent to IoT cloud
+    ////// State 6. Test if there is data available to be sent to IoT cloud
     if (PayloadRdy == false) {
         root.open("/");	// Open root directory
         root.rewind();	// Rewind root directory
@@ -579,16 +524,19 @@ void loop() {
                     mIoT = buffer.toInt();
                 }
                 else if (i == 7) {  // O2
-                    O2ValueAvg = buffer.toFloat();
-                }
-                else if (i == 8) {  // CO2
-                    CO2ppmAvg = buffer.toFloat();
-                }
-                else if (i == 9) {  // Temp
                     TempAvg = buffer.toFloat();
                 }
-                else if (i == 10) { // RH
+                else if (i == 8) {  // CO2
                     RHAvg = buffer.toFloat();
+                }
+                else if (i == 9) {  // Temp
+                    PressureAvg = buffer.toFloat();
+                }
+                else if (i == 10) { // RH
+                    CO2ppmAvg = buffer.toInt();
+                }
+                else if (i == 11) { // RH
+                    TVOCAvg = buffer.toInt();
                 }
 
 
@@ -637,9 +585,9 @@ void loop() {
 
     }
 
-
-    ////// State 11. Update Screen
-    if (!debug) {
+    /*
+    ////// State 7. Update Screen
+    if ( !debug && (LastSec != s) ) {
         // Top left, Temp
         M5.Lcd.fillRect(0, 0, 160, 100, M5.Lcd.color565(255, 0, 0));
         M5.Lcd.setTextColor(M5.Lcd.color565(255, 255, 255));
@@ -695,8 +643,10 @@ void loop() {
             M5.Lcd.setTextDatum(MR_DATUM);
             M5.Lcd.drawString(F("IoT"), 320 - 10, 220);
         }
-    }
 
+        LastSec = s;
+    }
+    */
 
     if (debug) {
         M5.Lcd.print(F("Loop end at: "));
