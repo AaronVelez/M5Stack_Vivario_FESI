@@ -28,7 +28,7 @@
 #include "FreeSans20pt7b.h"
 
 
-////// Credentials_Gas_Alarm_Photo_Lab.h is a user-created library containing paswords, IDs and credentials
+////// Credentials_Environmental_Vivario_Lab.h is a user-created library containing paswords, IDs and credentials
 #include "Credentials_Environmental_Vivario_Lab.h"
 const char ssid[] = WIFI_SSID;
 const char password[] = WIFI_PASSWD;
