@@ -21,7 +21,7 @@
 #define GCC_NOT_5_2_0 0
 #define WITH_POSIX
 #define F_CPU 240000000L
-#define ARDUINO 108010
+#define ARDUINO 108013
 #define ARDUINO_M5Stack_Core_ESP32
 #define ARDUINO_ARCH_ESP32
 #define ESP32
@@ -100,6 +100,6 @@ typedef long pthread_cond_t;
 
 #define ESP_LOGI(tag, ...)
 
-#include "Main.ino"
+#include "CCS811_Test.ino"
 #endif
 #endif

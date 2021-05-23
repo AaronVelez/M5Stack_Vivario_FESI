@@ -29,7 +29,7 @@
 
 
 ////// Credentials_Gas_Alarm_Photo_Lab.h is a user-created library containing paswords, IDs and credentials
-#include "Credentials_Gas_Alarm_Photo_Lab.h"
+#include "Credentials_Environmental_Vivario_Lab.h"
 const char ssid[] = WIFI_SSID;
 const char password[] = WIFI_PASSWD;
 const char iot_server[] = IoT_SERVER;
@@ -41,7 +41,7 @@ const char iot_data_bucket[] = IoT_DATA_BUCKET;
 
 ////// Comunication libraries
 #include <Wire.h>
-#include "SPI.h"
+#include <SPI.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 WiFiUDP ntpUDP;
@@ -88,16 +88,16 @@ DFRobot_SHT3x sht3x(&Wire,/*address=*/0x44,/*RST=*/4); // secondary I2C address 
 
 
 ////// Library for BMP388 Barometric Pressure Sensor
-#include "DFRobot_BMP388.h"
-#include "DFRobot_BMP388_I2C.h"
-#include "math.h"
-#include "bmp3_defs.h"
+#include <DFRobot_BMP388.h>
+#include <DFRobot_BMP388_I2C.h>
+#include <math.h>
+#include <bmp3_defs.h>
 //#define CALIBRATE_Altitude
 DFRobot_BMP388_I2C bmp388;
 
 
 ////// Library for CCS811 Air Quality Sensor
-#include "DFRobot_CCS811.h"
+#include <DFRobot_CCS811.h>
 DFRobot_CCS811 CCS811;
 
 
@@ -169,8 +169,8 @@ int TVOC = -1;        // Total Volatile Organic Compounds (TVOC) value
 float TempSum = 0;
 float RHSum = 0;
 float PressureSum = 0;
-int CO2ppmSum = 0;
-int TVOCSum = 0;
+float CO2ppmSum = 0;
+float TVOCSum = 0;
 
 
 ////// Values to be logged. They will be the average over the last 5 minutes
@@ -188,6 +188,7 @@ void setup() {
     ////// Initialize and setup M5Stack
     M5.begin();
     M5.Power.begin();
+    
     M5.Lcd.println(F("M5 started"));
     WiFi.begin(ssid, password);
     WiFi.setAutoReconnect(true);
@@ -204,7 +205,7 @@ void setup() {
             break;
         }
     }
-
+    
 
     ////// Configure IoT
     M5.Lcd.println(F("Configuring IoT..."));
@@ -214,7 +215,7 @@ void setup() {
         if (in.is_empty()) { in = debug; }
         else { debug = in; }
     };
-
+    
     // Define output resources
     thing["RT_Temp"] >> [](pson& out) { out = Temp; };
     thing["RT_RH"] >> [](pson& out) { out = RH; };
@@ -230,7 +231,7 @@ void setup() {
         out["eCarbon_Dioxide"] = CO2ppmAvg;
         out["TVOC"] = TVOCAvg;
     };
-
+    
 
     ////// Initialize SD card
     M5.Lcd.println(F("Setting SD card..."));
@@ -240,7 +241,7 @@ void setup() {
     // (prevents heap RAM framgentation)
     LogString.reserve(HeaderN * 7);
     str.reserve(HeaderN * 7);
-
+    
 
     //////// Start NTP client engine and update system time
     M5.Lcd.println(F("Starting NTP client engine..."));
@@ -262,7 +263,7 @@ void setup() {
     unix_t = mxCT.toLocal(unix_t); // Conver to local time
     setTime(unix_t);   // set system time to given unix timestamp
 
-
+    
     // Start SHT31 Temp and RH sensor
     M5.Lcd.println(F("Starting Temp/RH sensor..."));
     if (sht3x.begin() != 0) {
@@ -277,7 +278,7 @@ void setup() {
         delay(1000);
     }
 
-
+    
     // Start BMP388 Barometric Pressure sensor
     M5.Lcd.println(F("Starting barometric pressure sensor..."));
     bmp388.set_iic_addr(BMP3_I2C_ADDR_SEC); // default I2C address 0x77
@@ -285,16 +286,16 @@ void setup() {
         M5.Lcd.println(F("Failed to initialize the chip, please confirm the wire connection"));
         delay(1000);
     }
-
-
+    
+    
     // Start CCS811 Air Quality sensor
     M5.Lcd.println(F("Starting air quality sensor..."));
     if (CCS811.begin() != 0) {
         M5.Lcd.println(F("Failed to initialize the chip, please confirm the wire connection"));
         delay(1000);
     }
-    //CCS811.setMeasurementMode(eCycle_1s, 0, 0); // constant power mode, read evry second is possible
-
+    CCS811.setMeasurementMode(CCS811.eCycle_1s, 0, 0);  // constant power mode, read evry second is possible
+    
 
     M5.Lcd.println(F("Setup done!"));
     delay(500);
@@ -317,7 +318,7 @@ void loop() {
     }
     ////// State 1. Keep the Iot engine runing
     thing.handle();
-
+    
 
     ////// State 2. Get current time from system time
     if (true) {
@@ -353,9 +354,12 @@ void loop() {
             M5.Lcd.println((String)"Temp: " + Temp + " °C");
             M5.Lcd.println((String)"RH: " + RH + " %");
         }
+        
         // BMP388 Barometric pressure
         Pressure = bmp388.readPressure() / 1000;    // in kPa
         if (debug) { M5.Lcd.println((String)"Pressure: " + Pressure + " kPa"); }
+
+        
         // CCS811 Air Quality
         if (CCS811.checkDataReady() == true) {
             CO2ppm = CCS811.getCO2PPM();
@@ -371,6 +375,7 @@ void loop() {
             M5.Lcd.println((String)"eCO2: " + CO2ppm + " ppm");
             M5.Lcd.println((String)"TVOC: " + TVOC + " ppb");
         }
+        
 
         // Add new values to sum        
         TempSum += Temp;
@@ -428,7 +433,7 @@ void loop() {
         LogString = (String)unix_t + "\t" + yr + "\t" + mo + "\t" + dy + "\t" + h + "\t" + m + "\t" + s + "\t" +
             String(TempAvg, 4) + "\t" + String(RHAvg, 4) + "\t" +
             String(Pressure, 4) + "\t" +
-            String(CO2ppmAvg) + "\t" + String(TVOCAvg) "\t" +
+            String(CO2ppmAvg) + "\t" + String(TVOCAvg) + "\t" +
             "0";
         LogFile.println(LogString); // Prints Log string to SD card file "LogFile.txt"
         LogFile.close(); // Close SD card file to save changes
